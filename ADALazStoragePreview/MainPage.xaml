@@ -9,8 +9,33 @@
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
 
     <Grid>
-        <Button HorizontalAlignment="Center"
-                VerticalAlignment="Center" FontSize="60"
-                Click="Button_Click">LOGIN</Button>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition />
+            </Grid.ColumnDefinitions>
+            <Button HorizontalAlignment="Center"
+                    VerticalAlignment="Center" FontSize="60"
+                    Click="Button_Click">List Blobs</Button>
+            <TextBlock Grid.Column="1"
+                       x:Name="LoadingText"
+                       Visibility="Collapsed"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontSize="30">Loading...</TextBlock>
+        </Grid>
+        <TextBlock x:Name="ErrorText" Grid.Row="1" TextWrapping="Wrap"/>
+        <ListView x:Name="BlobListView" Grid.Row="2">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
     </Grid>
 </Page>

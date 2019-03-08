@@ -6,8 +6,9 @@ using Microsoft.IdentityModel.Clients.ActiveDirectory; //ADAL client library for
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using Microsoft.WindowsAzure.Storage.Auth;
-using Microsoft.WindowsAzure.Storage.Blob;
+using System.Collections.Generic;
+using System.Xml.Linq;
+using System.Linq;
 
 // The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0x409
 
@@ -18,6 +19,17 @@ namespace ADALazStoragePreview
     /// </summary>
     public sealed partial class MainPage : Page
     {
+        private const string StorageAccountName = "<your storage account name>";
+        private const string StorageContainerName = "<your container name>";
+        private const string ClientId = "<your client id>";
+        private const string ResourceId = "https://storage.azure.com/";
+        private const string AuthInstance = "https://login.microsoftonline.com/{0}/";
+        private const string TenantId = "<your tenant id>"; 
+        private const string RedirectUri = @"urn:ietf:wg:oauth:2.0:oob";
+
+        public List<string> BlobList
+        { get; set; } = new List<string>();
+
         public MainPage()
         {
             this.InitializeComponent();
@@ -28,48 +40,72 @@ namespace ADALazStoragePreview
             var http = new HttpClient();
 
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            http.DefaultRequestHeaders.Add("x-ms-version", "2018-03-28");
 
-            var response = await http.GetAsync("https://msalazstorage.blob.core.windows.net/models?restype=container&comp=list");
+            var rqstStr = $"https://{StorageAccountName}.blob.core.windows.net/{StorageContainerName}?restype=container&comp=list";
+            var response = await http.GetAsync(rqstStr);
+            response.EnsureSuccessStatusCode();
 
-            if (!response.IsSuccessStatusCode)
+            var respString = await response.Content.ReadAsStringAsync();
+            XDocument doc = XDocument.Parse(respString);
+
+            var blobNameList = doc.Descendants("Blob").Select(b => b.Descendants("Name").Single().Value);
+            BlobListView.Items.Clear();
+            foreach (var name in blobNameList)
             {
-                return;
+                BlobListView.Items.Add(name);
             }
         }
 
-        static async Task<string> GetUserOAuthToken()
+        static async Task<string> AuthAsync()
         {
-            const string ResourceId = "https://storage.azure.com/";
-            const string AuthInstance = "https://login.microsoftonline.com/{0}/";
-            const string TenantId = "ebc9a275-9a49-4936-8704-a7b92097dafb"; // Tenant or directory ID
-
             // Construct the authority string from the Azure AD OAuth endpoint and the tenant ID. 
             string authority = string.Format(CultureInfo.InvariantCulture, AuthInstance, TenantId);
             AuthenticationContext authContext = new AuthenticationContext(authority);
+            authContext.TokenCache.Clear();
 
             // Acquire an access token from Azure AD. 
             AuthenticationResult result = await authContext.AcquireTokenAsync(ResourceId,
-                                                                        "ff165698-5680-441a-9935-e7e3b6f0ca4b",
-                                                                        new Uri(@"urn:ietf:wg:oauth:2.0:oob"),
-                                                                        new PlatformParameters(PromptBehavior.Auto, false));
+                                                    ClientId,
+                                                    new Uri(RedirectUri),
+                                                    new PlatformParameters(PromptBehavior.Auto, false));
 
             return result.AccessToken;
         }
 
         private async void Button_Click(object sender, RoutedEventArgs e)
         {
-            string accessToken = await GetUserOAuthToken();
-
-            // Use the access token to create the storage credentials.
-            TokenCredential tokenCredential = new TokenCredential(accessToken);
-            StorageCredentials storageCredentials = new StorageCredentials(tokenCredential);
-
-            // Create a block blob using those credentials
-            CloudBlockBlob blob = new CloudBlockBlob(new Uri("https://msalazstorage.blob.core.windows.net/models/Blob1.txt"), storageCredentials);
-
-            await blob.UploadTextAsync("Blob created by Azure AD authenticated user.");
-
-            //await CallContainerAsync(accessToken);
+            LoadingText.Visibility = Visibility.Visible;
+            ErrorText.Text = string.Empty;
+            try
+            {
+                var accessToken = await AuthAsync();
+                await CallContainerAsync(accessToken);
+            }
+            catch (AdalException ex)
+            {
+                ErrorText.Text = ex.Message;
+                if (ex.InnerException != null)
+                {
+                    ErrorText.Text += " " + ex.InnerException.Message;
+                }
+                if (ex.GetBaseException() != null)
+                {
+                    ErrorText.Text += " " + ex.GetBaseException().Message;
+                }
+            }
+            catch (Exception ex)
+            {
+                ErrorText.Text = ex.Message;
+                if (ex.InnerException != null)
+                {
+                    ErrorText.Text += " " + ex.InnerException.Message;
+                }
+            }
+            finally
+            {
+                LoadingText.Visibility = Visibility.Collapsed;
+            }
         }
     }
 }
